@@ -1,0 +1,27 @@
+{
+  "name": "what-the-color-is-that",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev -w @wtcit/server\" \"npm run dev -w @wtcit/web\"",
+    "build": "npm run build -w @wtcit/web && npm run build -w @wtcit/server",
+    "start": "node apps/server/dist/index.js",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:watch": "npm run test:watch --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
+
