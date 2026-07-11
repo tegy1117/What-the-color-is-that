@@ -4,5 +4,9 @@ coverage
 .git
 .codex
 .agents
+.pi-subagents
+.env
+.env.*
+!.env.example
 *.log
 

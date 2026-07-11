@@ -6,9 +6,11 @@ function createHarness() {
   vi.useFakeTimers();
   let now = 1_000;
   const snapshots = new Map<string, RoomSnapshot>();
+  const kickedSockets = new Set<string>();
   const sink: EventSink = {
     snapshot: (socketId, snapshot) => snapshots.set(socketId, snapshot),
     presence: () => undefined,
+    kicked: (socketId) => kickedSockets.add(socketId),
   };
   let randomState = 11;
   const random = () => {
@@ -23,6 +25,7 @@ function createHarness() {
   return {
     service,
     snapshots,
+    kickedSockets,
     setNow: (value: number) => { now = value; },
   };
 }
@@ -284,6 +287,87 @@ describe("GameService", () => {
       role: "player",
     });
     expect(rejoined.ok).toBe(true);
+  });
+
+  it("lets participants change their own role in the lobby only", () => {
+    const harness = createHarness();
+    createTwoPlayerRoom(harness);
+
+    expect(harness.service.updateRole("socket-b", { role: "spectator" }).ok).toBe(true);
+    expect(harness.snapshots.get("socket-a")?.spectators.map((entry) => entry.nickname))
+      .toContain("준호");
+
+    expect(harness.service.updateRole("socket-b", { role: "player" }).ok).toBe(true);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+    expect(harness.service.updateRole("socket-b", { role: "spectator" }))
+      .toMatchObject({ ok: false, code: "INVALID_PHASE" });
+  });
+
+  it("lets only the host kick another player and invalidates the kicked session", () => {
+    const harness = createHarness();
+    const sessions = createTwoPlayerRoom(harness);
+
+    expect(harness.service.kickPlayer("socket-b", {
+      participantId: sessions.created.participantId,
+    })).toMatchObject({ ok: false, code: "NOT_HOST" });
+    expect(harness.service.kickPlayer("socket-a", {
+      participantId: sessions.created.participantId,
+    })).toMatchObject({ ok: false, code: "NOT_ALLOWED" });
+
+    expect(harness.service.kickPlayer("socket-a", {
+      participantId: sessions.joined.participantId,
+    }).ok).toBe(true);
+    expect(harness.kickedSockets).toContain("socket-b");
+    expect(harness.snapshots.get("socket-a")?.players.map((entry) => entry.id))
+      .not.toContain(sessions.joined.participantId);
+    expect(harness.service.getSnapshot(
+      sessions.created.roomCode,
+      sessions.joined.participantId,
+    )).toBeNull();
+    expect(harness.service.resumeSession("socket-c", sessions.joined))
+      .toMatchObject({ ok: false, code: "SESSION_EXPIRED" });
+  });
+
+  it("does not let the host kick a player after the game starts", () => {
+    const harness = createHarness();
+    const sessions = createThreePlayerRoom(harness);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+
+    expect(harness.service.kickPlayer("socket-a", {
+      participantId: sessions.third.participantId,
+    })).toMatchObject({ ok: false, code: "INVALID_PHASE" });
+    expect(harness.service.getSnapshot(
+      sessions.created.roomCode,
+      sessions.third.participantId,
+    )).not.toBeNull();
+  });
+
+  it("lets the host remove a disconnected player and invalidates reconnect", () => {
+    const harness = createHarness();
+    const sessions = createTwoPlayerRoom(harness);
+    harness.service.disconnect("socket-b");
+
+    expect(harness.service.kickPlayer("socket-a", {
+      participantId: sessions.joined.participantId,
+    }).ok).toBe(true);
+    expect(harness.service.resumeSession("socket-c", sessions.joined))
+      .toMatchObject({ ok: false, code: "SESSION_EXPIRED" });
+  });
+
+  it("does not let the host kick a spectator", () => {
+    const harness = createHarness();
+    const created = harness.service.createRoom("socket-a", { nickname: "민지", role: "player" });
+    if (!created.ok) throw new Error(created.message);
+    const spectator = harness.service.joinRoom("socket-b", {
+      roomCode: created.data.roomCode,
+      nickname: "준호",
+      role: "spectator",
+    });
+    if (!spectator.ok) throw new Error(spectator.message);
+
+    expect(harness.service.kickPlayer("socket-a", {
+      participantId: spectator.data.participantId,
+    })).toMatchObject({ ok: false, code: "NOT_ALLOWED" });
   });
 
   it("uses shared ranks for tied totals", () => {

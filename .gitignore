@@ -1,10 +1,33 @@
+# Dependencies
 node_modules/
+
+# Build and test output
 dist/
 coverage/
 .vite/
+*.tsbuildinfo
+
+# Logs
 *.log
+
+# Local environment and credentials
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+
+# Local agent state
 .pi-subagents/
+.agents/
+.codex/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local deployment archive
+/wtcit.tar.gz
 

@@ -9,11 +9,13 @@ import {
   generateCandidateColors,
   guessSchema,
   joinRoomSchema,
+  kickPlayerSchema,
   pickerSubmitSchema,
   revealPauseSchema,
   scoreGuess,
   sessionResumeSchema,
   settingsSchema,
+  updateRoleSchema,
   type ErrorCode,
   type EventAck,
   type GameSettings,
@@ -34,6 +36,7 @@ const SKIPPED_MS = 3_000;
 export interface EventSink {
   snapshot: (socketId: string, snapshot: RoomSnapshot) => void;
   presence: (socketId: string, presence: GuessPresence) => void;
+  kicked: (socketId: string) => void;
 }
 
 const success = <T>(data: T): EventAck<T> => ({ ok: true, data });
@@ -187,6 +190,65 @@ export class GameService {
     context.participant.connected = false;
     context.participant.disconnectedAt = this.clock.now();
     this.expireParticipant(context.room, context.participant, true);
+    return success(undefined);
+  }
+
+  updateRole(socketId: string, rawPayload: unknown): EventAck<undefined> {
+    const context = this.context(socketId);
+    if (!context) return failure("NOT_ALLOWED", "Join a room first");
+    if (context.room.game.phase !== "lobby") {
+      return failure("INVALID_PHASE", "Roles can only be changed in the lobby");
+    }
+    const parsed = updateRoleSchema.safeParse(rawPayload);
+    if (!parsed.success) return failure("INVALID_PAYLOAD", "Invalid participant role");
+    const { room, participant } = context;
+    if (
+      parsed.data.role === "player" &&
+      participant.role !== "player" &&
+      this.playerCount(room) >= MAX_PLAYERS
+    ) {
+      return failure("ROOM_FULL", "Player slots are full");
+    }
+    const spectatorCount = [...room.participants.values()].filter(
+      (candidate) => candidate.role === "spectator",
+    ).length;
+    if (
+      parsed.data.role === "spectator" &&
+      participant.role !== "spectator" &&
+      spectatorCount >= MAX_SPECTATORS
+    ) {
+      return failure("ROOM_FULL", "Spectator slots are full");
+    }
+
+    participant.role = parsed.data.role;
+    participant.preferredRole = parsed.data.role;
+    participant.pendingPlayer = false;
+    this.broadcast(room);
+    return success(undefined);
+  }
+
+  kickPlayer(socketId: string, rawPayload: unknown): EventAck<undefined> {
+    const context = this.context(socketId);
+    if (!context) return failure("NOT_ALLOWED", "Join a room first");
+    const { room, participant } = context;
+    if (room.hostId !== participant.id) return failure("NOT_HOST", "Host only");
+    if (room.game.phase !== "lobby") {
+      return failure("INVALID_PHASE", "Players can only be kicked in the lobby");
+    }
+    const parsed = kickPlayerSchema.safeParse(rawPayload);
+    if (!parsed.success) return failure("INVALID_PAYLOAD", "Invalid player");
+    const target = room.participants.get(parsed.data.participantId);
+    if (!target || target.id === participant.id || target.role !== "player") {
+      return failure("NOT_ALLOWED", "Only another player can be kicked");
+    }
+
+    this.clearDisconnect(target.id);
+    if (target.socketId) {
+      this.socketIndex.delete(target.socketId);
+      this.sink.kicked(target.socketId);
+    }
+    room.participants.delete(target.id);
+    this.broadcast(room);
     return success(undefined);
   }
 

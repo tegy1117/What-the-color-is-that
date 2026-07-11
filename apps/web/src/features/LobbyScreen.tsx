@@ -1,19 +1,36 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CYCLE_OPTIONS, TIME_OPTIONS, type GameSettings, type LobbySnapshot } from "@wtcit/shared";
+import {
+  CYCLE_OPTIONS,
+  TIME_OPTIONS,
+  type GameSettings,
+  type LobbySnapshot,
+  type ParticipantRole,
+} from "@wtcit/shared";
 import { CheckIcon, CopyIcon } from "../components/Icons";
 import styles from "../styles.module.css";
 
 interface LobbyScreenProps {
   snapshot: LobbySnapshot;
+  onRoleChange: (role: ParticipantRole) => void;
+  onKickPlayer: (participantId: string) => void;
   onSettings: (settings: GameSettings) => void;
   onStart: () => void;
 }
 
-export function LobbyScreen({ snapshot, onSettings, onStart }: LobbyScreenProps) {
+export function LobbyScreen({
+  snapshot,
+  onRoleChange,
+  onKickPlayer,
+  onSettings,
+  onStart,
+}: LobbyScreenProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const isHost = snapshot.selfId === snapshot.hostId;
+  const selfRole = snapshot.players.some((participant) => participant.id === snapshot.selfId)
+    ? "player"
+    : "spectator";
   const copyLink = async () => {
     const url = new URL(window.location.href);
     url.searchParams.set("room", snapshot.roomCode);
@@ -37,7 +54,29 @@ export function LobbyScreen({ snapshot, onSettings, onStart }: LobbyScreenProps)
         <section className={styles.roster}>
           <div>
             <h2>{t("lobby.players", { current: snapshot.players.length })}</h2>
-            <ul>{snapshot.players.map((player) => <li key={player.id}><span>{player.nickname}{player.id === snapshot.hostId ? <small>{t("common.host")}</small> : null}</span><b>{player.connected ? t("common.connected") : t("common.disconnected")}</b></li>)}</ul>
+            <ul>
+              {snapshot.players.map((player) => (
+                <li key={player.id}>
+                  <span>
+                    {player.nickname}
+                    {player.id === snapshot.hostId ? <small>{t("common.host")}</small> : null}
+                  </span>
+                  <div className={styles.rosterActions}>
+                    <b>{player.connected ? t("common.connected") : t("common.disconnected")}</b>
+                    {isHost && player.id !== snapshot.selfId ? (
+                      <button
+                        type="button"
+                        className={styles.kickButton}
+                        aria-label={t("lobby.kickPlayer", { name: player.nickname })}
+                        onClick={() => onKickPlayer(player.id)}
+                      >
+                        {t("lobby.kick")}
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
           <div>
             <h2>{t("lobby.spectators", { current: snapshot.spectators.length })}</h2>
@@ -45,6 +84,22 @@ export function LobbyScreen({ snapshot, onSettings, onStart }: LobbyScreenProps)
           </div>
         </section>
         <section className={styles.settings}>
+          <fieldset className={styles.settingRow}>
+            <legend>{t("lobby.yourRole")}</legend>
+            <div className={styles.segmented}>
+              {(["player", "spectator"] as const).map((role) => (
+                <button
+                  type="button"
+                  key={role}
+                  className={selfRole === role ? styles.selected : ""}
+                  aria-pressed={selfRole === role}
+                  onClick={() => onRoleChange(role)}
+                >
+                  {t(`common.${role}`)}
+                </button>
+              ))}
+            </div>
+          </fieldset>
           <h2>{t("lobby.settings")}</h2>
           <SettingRow title={t("lobby.guessTime")} values={TIME_OPTIONS} value={snapshot.settings.guessSeconds} disabled={!isHost} format={(value) => t("lobby.seconds", { value })} onChange={(value) => setSetting("guessSeconds", value)} />
           <SettingRow title={t("lobby.pickerTime")} values={TIME_OPTIONS} value={snapshot.settings.pickerSeconds} disabled={!isHost} format={(value) => t("lobby.seconds", { value })} onChange={(value) => setSetting("pickerSeconds", value)} />

@@ -100,8 +100,9 @@ export function deltaEOK(firstHex: string, secondHex: string): number {
 }
 
 export function calculateAccuracy(deltaE: number): number {
-  const similarity = Math.max(0, 1 - deltaE / 50);
-  return Math.round(100 * similarity ** 2);
+  const perceptualDistance = Math.max(0, deltaE);
+  // A Gaussian falloff keeps small OKLab differences near 100% while separating distant colors.
+  return Math.round(100 * Math.exp(-((perceptualDistance / 40) ** 2)));
 }
 
 export function calculateRawTime(

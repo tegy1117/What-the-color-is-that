@@ -20,6 +20,7 @@ export function createGameServer() {
   const service = new GameService({
     snapshot: (socketId, snapshot) => io.to(socketId).emit("room:snapshot", snapshot),
     presence: (socketId, presence) => io.to(socketId).emit("guess:presence", presence),
+    kicked: (socketId) => io.to(socketId).emit("room:kicked"),
   });
 
   app.get("/health", (_request, response) => {
@@ -39,6 +40,8 @@ export function createGameServer() {
     socket.on("room:create", (payload, ack) => reply(ack, () => service.createRoom(socket.id, payload)));
     socket.on("room:join", (payload, ack) => reply(ack, () => service.joinRoom(socket.id, payload)));
     socket.on("room:leave", (ack) => reply(ack, () => service.leaveRoom(socket.id)));
+    socket.on("room:updateRole", (payload, ack) => reply(ack, () => service.updateRole(socket.id, payload)));
+    socket.on("room:kickPlayer", (payload, ack) => reply(ack, () => service.kickPlayer(socket.id, payload)));
     socket.on("room:updateSettings", (payload, ack) => reply(ack, () => service.updateSettings(socket.id, payload)));
     socket.on("game:start", (ack) => reply(ack, () => service.startGame(socket.id)));
     socket.on("game:end", (ack) => reply(ack, () => service.endGame(socket.id)));

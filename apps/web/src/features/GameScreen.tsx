@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import type { GameSettings, RoomSnapshot } from "@wtcit/shared";
+import type { GameSettings, ParticipantRole, RoomSnapshot } from "@wtcit/shared";
 import { BrandHeader } from "../components/BrandHeader";
 import { GameOverScreen } from "./GameOverScreen";
 import { GuessingScreen } from "./GuessingScreen";
@@ -14,6 +14,8 @@ interface GameScreenProps {
   snapshot: RoomSnapshot;
   connected: boolean;
   onLeave: () => void;
+  onRoleChange: (role: ParticipantRole) => void;
+  onKickPlayer: (participantId: string) => void;
   onSettings: (settings: GameSettings) => void;
   onStart: () => void;
   onEnd: () => void;
@@ -28,7 +30,7 @@ export function GameScreen(props: GameScreenProps) {
   const { t } = useTranslation();
   const { snapshot } = props;
   let content: React.ReactNode;
-  if (snapshot.phase === "lobby") content = <LobbyScreen snapshot={snapshot} onSettings={props.onSettings} onStart={props.onStart} />;
+  if (snapshot.phase === "lobby") content = <LobbyScreen snapshot={snapshot} onRoleChange={props.onRoleChange} onKickPlayer={props.onKickPlayer} onSettings={props.onSettings} onStart={props.onStart} />;
   else if (snapshot.phase === "pickerPrep" && snapshot.view === "picker") content = <PickerPrepScreen snapshot={snapshot} onSubmit={props.onPickerSubmit} />;
   else if (snapshot.phase === "pickerPrep") content = <WaitingScreen snapshot={snapshot} />;
   else if (snapshot.phase === "guessing" && snapshot.view === "guesser") content = <GuessingScreen snapshot={snapshot} onUpdate={props.onGuessUpdate} onConfirm={props.onGuessConfirm} />;

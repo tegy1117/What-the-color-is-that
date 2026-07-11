@@ -34,6 +34,14 @@ export const joinRoomSchema = createRoomSchema.extend({
   roomCode: roomCodeSchema,
 });
 
+export const updateRoleSchema = z.object({
+  role: participantRoleSchema,
+});
+
+export const kickPlayerSchema = z.object({
+  participantId: z.string().uuid(),
+});
+
 export const sessionResumeSchema = z.object({
   roomCode: roomCodeSchema,
   token: z.string().min(20).max(128),

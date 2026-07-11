@@ -25,6 +25,12 @@ function saveSession(session: SessionInfo | null) {
   else localStorage.removeItem(SESSION_KEY);
 }
 
+function clearRoomFromUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("room");
+  window.history.replaceState({}, "", url);
+}
+
 export function useGameSocket() {
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [connected, setConnected] = useState(socket.connected);
@@ -53,6 +59,12 @@ export function useGameSocket() {
       setSnapshot(nextSnapshot);
       setErrorCode(null);
     };
+    const onKicked = () => {
+      saveSession(null);
+      setSnapshot(null);
+      setErrorCode("KICKED");
+      clearRoomFromUrl();
+    };
     const onPresence = (presence: { participantId: string; color: string; confirmed: boolean }) => {
       setSnapshot((current) => {
         if (
@@ -76,6 +88,7 @@ export function useGameSocket() {
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("room:snapshot", onSnapshot);
+    socket.on("room:kicked", onKicked);
     socket.on("guess:presence", onPresence);
     socket.connect();
 
@@ -83,6 +96,7 @@ export function useGameSocket() {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("room:snapshot", onSnapshot);
+      socket.off("room:kicked", onKicked);
       socket.off("guess:presence", onPresence);
     };
   }, []);
@@ -107,11 +121,17 @@ export function useGameSocket() {
     socket.emit("room:leave", () => {
       saveSession(null);
       setSnapshot(null);
-      const url = new URL(window.location.href);
-      url.searchParams.delete("room");
-      window.history.replaceState({}, "", url);
+      clearRoomFromUrl();
     });
   }, []);
+
+  const updateRole = useCallback((role: ParticipantRole) => {
+    socket.emit("room:updateRole", { role }, handleResult);
+  }, [handleResult]);
+
+  const kickPlayer = useCallback((participantId: string) => {
+    socket.emit("room:kickPlayer", { participantId }, handleResult);
+  }, [handleResult]);
 
   const updateSettings = useCallback((settings: GameSettings) => {
     socket.emit("room:updateSettings", settings, handleResult);
@@ -137,6 +157,8 @@ export function useGameSocket() {
     createRoom,
     joinRoom,
     leaveRoom,
+    updateRole,
+    kickPlayer,
     updateSettings,
     startGame,
     endGame,

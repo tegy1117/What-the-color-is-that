@@ -178,7 +178,8 @@ export type ErrorCode =
   | "NOT_ALLOWED"
   | "ALREADY_CONFIRMED"
   | "RATE_LIMITED"
-  | "SESSION_EXPIRED";
+  | "SESSION_EXPIRED"
+  | "KICKED";
 
 export type EventAck<T = undefined> =
   | { ok: true; data: T }
@@ -196,6 +197,8 @@ export interface ClientToServerEvents {
   "room:create": (payload: unknown, ack: Ack<SessionInfo>) => void;
   "room:join": (payload: unknown, ack: Ack<SessionInfo>) => void;
   "room:leave": (ack: Ack<undefined>) => void;
+  "room:updateRole": (payload: unknown, ack: Ack<undefined>) => void;
+  "room:kickPlayer": (payload: unknown, ack: Ack<undefined>) => void;
   "room:updateSettings": (payload: unknown, ack: Ack<undefined>) => void;
   "game:start": (ack: Ack<undefined>) => void;
   "game:end": (ack: Ack<undefined>) => void;
@@ -209,6 +212,7 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   "room:snapshot": (snapshot: RoomSnapshot) => void;
+  "room:kicked": () => void;
   "guess:presence": (presence: GuessPresence) => void;
 }
 
