@@ -14,8 +14,39 @@ coverage/
 .env
 .env.*
 !.env.example
+.npmrc
+.netrc
+.ssh/
+id_rsa*
+id_ecdsa*
+id_ed25519*
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
+credentials*.json
+service-account*.json
+secrets*.json
+secrets*.yaml
+secrets*.yml
+
+# Cloud and infrastructure state
+.aws/
+.azure/
+.gcloud/
+.kube/
+kubeconfig*
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+compose.override.yaml
+compose.override.yml
+
+# Local operational context
+/CONTEXT.md
 
 # Local agent state
 .pi-subagents/
