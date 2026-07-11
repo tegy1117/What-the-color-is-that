@@ -9,6 +9,96 @@
 
 > 방과 게임 상태는 메모리에만 있습니다. 컨테이너 재시작이나 재배포 시 진행 중인 방은 사라지며, 현재 구성은 복제본을 1개만 실행해야 합니다.
 
+## Cloud-Init으로 빠른 배포 (권장)
+
+Vultr의 **Cloud-Init User Data** 입력란에 `deploy/vultr/cloud-init.yaml` 전체를 붙여 넣으면 첫 부팅에 다음 작업이 자동으로 진행됩니다.
+
+1. Ubuntu 패키지 업데이트
+2. RAM이 2GB 미만이면 빌드용 2GB swap 생성
+3. GitHub 저장소 clone
+4. Docker 공식 apt 저장소 등록 및 Docker Compose 설치
+5. 앱 이미지 빌드와 Caddy 실행
+6. `wtcit-update`, `wtcit-status` 관리 명령 설치
+
+Cloud-Init은 root 권한으로 첫 부팅에 한 번 실행됩니다. 자동 구성에는 몇 분이 걸릴 수 있습니다.
+
+### 1. 템플릿 설정
+
+`deploy/vultr/cloud-init.yaml`에서 `DOMAIN`만 환경에 맞게 수정합니다.
+
+IP로 먼저 실행할 때:
+
+```bash
+DOMAIN=':80'
+```
+
+DNS의 `A` 레코드를 Vultr 서버 IP에 연결한 뒤 HTTPS로 실행할 때:
+
+```bash
+DOMAIN='game.example.com'
+```
+
+Vultr 인스턴스 생성 화면에서 다음과 같이 설정합니다.
+
+- OS: Ubuntu 24.04 LTS
+- 인증: SSH Key 권장
+- Additional Features → **Enable Cloud-Init User-Data**
+- User Data: `#cloud-config` 줄을 포함해 템플릿 전체 붙여 넣기
+- Vultr Firewall: 아래의 22/80/443 규칙 적용
+
+### 2. 첫 배포 확인
+
+SSH 접속이 가능해진 뒤 Cloud-Init 완료를 기다립니다.
+
+```bash
+sudo cloud-init status --wait
+sudo wtcit-status
+```
+
+IP 모드에서는 `http://<SERVER_IP>`, 도메인 모드에서는 `https://<DOMAIN>`으로 접속합니다.
+
+진행 상황과 실패 원인은 다음 명령으로 확인할 수 있습니다.
+
+```bash
+sudo tail -f /var/log/cloud-init-output.log
+sudo cloud-init status --long
+sudo cloud-init analyze blame
+```
+
+네트워크 문제 등으로 clone 또는 초기 빌드가 중단되었다면 원인을 해결한 뒤 같은 초기 배포 명령을 다시 실행할 수 있습니다. 불완전한 checkout은 삭제하지 않고 `/opt/wtcit.failed-<timestamp>`로 이동됩니다.
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates
+sudo wtcit-first-deploy
+```
+
+### 3. GitHub 변경 사항 업데이트
+
+GitHub의 `main` 브랜치에 commit과 push를 완료한 뒤 서버에서 실행합니다.
+
+```bash
+sudo wtcit-update --check
+sudo wtcit-update
+sudo wtcit-status
+```
+
+`wtcit-update`는 로컬 변경이 있는 서버 checkout을 덮어쓰지 않으며, fast-forward 가능한 commit만 반영합니다. 실행할 때마다 앱 이미지를 다시 검증·빌드하므로 이전 빌드 실패 후 같은 명령으로 안전하게 재시도할 수 있습니다. 빌드가 실패하면 기존 컨테이너는 계속 실행되며, `wtcit-status`는 checkout commit과 실제 배포된 commit이 다르면 경고합니다.
+
+배포 성공 조건에는 앱 컨테이너의 내부 healthcheck와 Caddy를 통과한 공개 HTTP/HTTPS healthcheck가 모두 포함됩니다.
+
+자동 업데이트는 게임 중인 방을 예고 없이 종료할 수 있어 기본으로 설정하지 않았습니다. 나중에 GitHub Actions를 사용하더라도 서버에서 `sudo wtcit-update`만 호출하도록 구성하면 동일한 검증 절차를 재사용할 수 있습니다.
+
+### 4. 도메인을 나중에 연결할 때
+
+```bash
+sudoedit /etc/wtcit.env
+# DOMAIN='game.example.com'으로 변경
+sudo wtcit-update
+```
+
+아래 1~7번은 Cloud-Init을 사용하지 않을 때의 수동 배포 절차입니다.
+
 ## 1. 배포 전 확인
 
 1. 로컬 변경을 검토하고 커밋 또는 태그로 배포 버전을 고정합니다.
@@ -24,7 +114,7 @@
 | 443 | TCP | 전체 | HTTPS 및 WebSocket |
 | 443 | UDP | 전체 | HTTP/3, 선택 사항 |
 
-앱의 3000번 포트는 외부에 열지 않습니다.
+앱의 3000번 포트는 외부에 열지 않습니다. Docker가 publish한 포트는 UFW 규칙을 우회할 수 있으므로 외부 접근 제어는 Vultr Firewall에서도 반드시 적용합니다.
 
 ## 2. Ubuntu에 Docker 설치
 
@@ -39,8 +129,14 @@ sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 
 . /etc/os-release
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: ${UBUNTU_CODENAME:-$VERSION_CODENAME}
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -142,14 +238,22 @@ docker compose logs --tail=100 caddy
 
 ## 7. 업데이트
 
-배포할 커밋을 확인한 뒤 서버에서 실행합니다.
+Cloud-Init으로 설치했다면 관리 명령을 사용합니다.
+
+```bash
+sudo wtcit-update --check
+sudo wtcit-update
+sudo wtcit-status
+```
+
+수동으로 설치했다면 기존 명령을 사용합니다.
 
 ```bash
 cd /opt/wtcit
 git pull --ff-only
 docker compose pull caddy
 docker compose build --pull app
-docker compose up -d --remove-orphans
+docker compose up -d --remove-orphans --wait
 docker compose ps
 ```
 
@@ -161,3 +265,9 @@ docker compose ps
 - `/assets/*`에는 1년 immutable 캐시가 적용됩니다.
 - Caddy가 Gzip/Zstandard 압축과 WebSocket 업그레이드를 처리합니다.
 - 여러 서버로 확장하려면 Socket.IO Redis adapter, sticky session, 공유 게임 상태 저장소가 추가로 필요합니다.
+
+## 참고한 공식 문서
+
+- [Vultr Cloud-Init User Data](https://docs.vultr.com/how-to-deploy-a-vultr-server-with-cloudinit-userdata)
+- [Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/)
+- [cloud-init module reference](https://cloudinit.readthedocs.io/en/latest/reference/modules.html)

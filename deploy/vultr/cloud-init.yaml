@@ -1,0 +1,62 @@
+#cloud-config
+
+hostname: wtcit
+preserve_hostname: false
+timezone: Asia/Seoul
+
+package_update: true
+package_upgrade: true
+package_reboot_if_required: false
+packages:
+  - ca-certificates
+  - curl
+  - git
+
+write_files:
+  - path: /etc/wtcit.env
+    owner: root:root
+    permissions: '0644'
+    content: |
+      APP_DIR='/opt/wtcit'
+      REPOSITORY_URL='https://github.com/tegy1117/What-the-color-is-that.git'
+      BRANCH='main'
+      # Use ':80' for an IP-only HTTP launch, or set a DNS name for automatic HTTPS.
+      DOMAIN=':80'
+      # 'auto' creates swap only when RAM is below 2 GB and no swap already exists.
+      ENABLE_SWAP='auto'
+      SWAP_SIZE_GB='2'
+
+  - path: /usr/local/sbin/wtcit-first-deploy
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+
+      # shellcheck disable=SC1091
+      source /etc/wtcit.env
+      : "${APP_DIR:?APP_DIR is required}"
+      : "${REPOSITORY_URL:?REPOSITORY_URL is required}"
+      : "${BRANCH:?BRANCH is required}"
+
+      if [[ -d "${APP_DIR}/.git" ]]; then
+        if [[ "$(git -C "${APP_DIR}" remote get-url origin)" != "${REPOSITORY_URL}" ]]; then
+          echo "Unexpected Git origin in ${APP_DIR}" >&2
+          exit 1
+        fi
+      else
+        if [[ -e "${APP_DIR}" ]]; then
+          failed_dir="${APP_DIR}.failed-$(date +%s)"
+          mv "${APP_DIR}" "${failed_dir}"
+          echo "Moved incomplete checkout to ${failed_dir}" >&2
+        fi
+        git clone --branch "${BRANCH}" --single-branch "${REPOSITORY_URL}" "${APP_DIR}"
+      fi
+
+      exec bash "${APP_DIR}/deploy/vultr/bootstrap.sh"
+
+runcmd:
+  - [install, -d, -m, '0755', /opt]
+  - [bash, /usr/local/sbin/wtcit-first-deploy]
+
+final_message: 'WTCIT bootstrap finished. Run: sudo wtcit-status'
