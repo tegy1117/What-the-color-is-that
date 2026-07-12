@@ -1,4 +1,5 @@
 {
+	default_sni {$DOMAIN}
 	cert_issuer acme {
 		profile shortlived
 	}
