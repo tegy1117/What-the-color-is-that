@@ -34,7 +34,7 @@ export function LobbyScreen({
   const copyLink = async () => {
     const url = new URL(window.location.href);
     url.searchParams.set("room", snapshot.roomCode);
-    await navigator.clipboard.writeText(url.toString());
+    if (!(await copyText(url.toString()))) return;
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1_500);
   };
@@ -110,6 +110,33 @@ export function LobbyScreen({
       {isHost ? <div className={styles.stickyAction}><button className={styles.primaryButton} type="button" onClick={onStart} disabled={snapshot.players.filter((player) => player.connected).length < 2}>{t("lobby.start")}</button>{snapshot.players.filter((player) => player.connected).length < 2 ? <span>{t("lobby.needPlayers")}</span> : null}</div> : null}
     </main>
   );
+}
+
+async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall back for browsers that expose the API but deny clipboard access.
+    }
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "");
+  textArea.style.position = "fixed";
+  textArea.style.opacity = "0";
+  document.body.appendChild(textArea);
+
+  try {
+    textArea.select();
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    textArea.remove();
+  }
 }
 
 function SettingRow<T extends number>({ title, values, value, disabled, format, onChange }: { title: string; values: readonly T[]; value: T; disabled: boolean; format: (value: T) => string; onChange: (value: T) => void }) {

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS, type LobbySnapshot } from "@wtcit/shared";
@@ -70,6 +70,31 @@ describe("LobbyScreen", () => {
 
   afterEach(() => {
     cleanup();
+    Reflect.deleteProperty(document, "execCommand");
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  it("copies the invite link without the Clipboard API", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
+    let copiedText = "";
+    const execCommand = vi.fn(() => {
+      copiedText = document.querySelector("textarea")?.value ?? "";
+      return true;
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand,
+    });
+
+    renderLobby(snapshot);
+    fireEvent.click(screen.getByRole("button", { name: "초대 링크 복사" }));
+
+    await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
+    expect(new URL(copiedText).searchParams.get("room")).toBe(snapshot.roomCode);
+    expect(screen.getByRole("button", { name: "복사했어요" })).toBeInTheDocument();
   });
 
   it("lets a participant choose their own role from inside the lobby", () => {
