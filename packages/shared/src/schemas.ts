@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { CYCLE_OPTIONS, TIME_OPTIONS } from "./types";
+import {
+  CYCLE_OPTIONS,
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
+  TIME_OPTIONS,
+} from "./types";
 
 const visibleText = (minimum: number, maximum: number) =>
   z
@@ -20,7 +25,11 @@ export const roomCodeSchema = z
   .string()
   .trim()
   .toUpperCase()
-  .regex(/^[A-HJ-NP-Z2-9]{6}$/u);
+  .refine(
+    (value) => value.length === ROOM_CODE_LENGTH &&
+      Array.from(value).every((character) => ROOM_CODE_ALPHABET.includes(character)),
+    "invalid_room_code",
+  );
 
 export const participantRoleSchema = z.enum(["player", "spectator"]);
 export const localeSchema = z.enum(["ko", "en"]);

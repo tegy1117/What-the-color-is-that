@@ -6,7 +6,7 @@ import i18n from "../i18n";
 import { RevealScreen } from "./RevealScreen";
 
 const snapshot: RevealSnapshot = {
-  roomCode: "ABC234",
+  roomCode: "ABC23456",
   selfId: "player-a",
   hostId: "player-a",
   phase: "reveal",

@@ -1,19 +1,25 @@
+{
+	cert_issuer acme {
+		profile shortlived
+	}
+}
+
 {$DOMAIN} {
-  encode zstd gzip
+	encode zstd gzip
 
-  @assets path /assets/*
-  header @assets >Cache-Control "public, max-age=31536000, immutable"
+	@assets path /assets/*
+	header @assets >Cache-Control "public, max-age=31536000, immutable"
 
-  header {
-    -Server
-    X-Content-Type-Options "nosniff"
-    Referrer-Policy "strict-origin-when-cross-origin"
-  }
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
 
-  log {
-    output stdout
-    format console
-  }
+	log {
+		output stdout
+		format console
+	}
 
-  reverse_proxy app:3000
+	reverse_proxy app:3000
 }

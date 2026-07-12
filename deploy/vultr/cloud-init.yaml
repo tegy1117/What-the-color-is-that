@@ -20,7 +20,7 @@ write_files:
       APP_DIR='/opt/wtcit'
       REPOSITORY_URL='https://github.com/tegy1117/What-the-color-is-that.git'
       BRANCH='main'
-      # Use ':80' for an IP-only HTTP launch, or set a DNS name for automatic HTTPS.
+      # Set a public IPv4 or DNS name for HTTPS; use ':80' only for plain HTTP testing.
       DOMAIN=':80'
       # 'auto' creates swap only when RAM is below 2 GB and no swap already exists.
       ENABLE_SWAP='auto'

@@ -221,7 +221,7 @@
 }
 
 .codeInput {
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -333,10 +333,11 @@
 }
 
 .roomCodeBlock > strong {
-  font-size: clamp(2.4rem, 8vw, 5rem);
+  font-size: clamp(1.9rem, 7vw, 4.5rem);
   font-weight: 900;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .copyButton {

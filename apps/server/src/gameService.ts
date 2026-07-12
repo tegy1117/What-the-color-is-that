@@ -4,6 +4,8 @@ import {
   DEFAULT_SETTINGS,
   MAX_PLAYERS,
   MAX_SPECTATORS,
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
   calculatePickerScore,
   createRoomSchema,
   generateCandidateColors,
@@ -27,7 +29,8 @@ import type { Clock, GameState, Participant, RoomState } from "./model";
 import { systemClock } from "./model";
 import { buildRanking, buildSnapshot } from "./snapshots";
 
-const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const MAX_ACTIVE_ROOMS = 80;
+
 const RECONNECT_GRACE_MS = 30_000;
 const EMPTY_ROOM_TTL_MS = 10 * 60_000;
 const REVEAL_MS = 12_000;
@@ -87,6 +90,9 @@ export class GameService {
     if (this.socketIndex.has(socketId)) return failure("NOT_ALLOWED", "Leave the current room first");
     const parsed = createRoomSchema.safeParse(rawPayload);
     if (!parsed.success) return failure("INVALID_PAYLOAD", "Invalid room settings");
+    if (this.rooms.size >= MAX_ACTIVE_ROOMS) {
+      return failure("RATE_LIMITED", "Server room limit reached");
+    }
     const roomCode = this.generateRoomCode();
     const participant = this.createParticipant(socketId, parsed.data.nickname, parsed.data.role);
     const room: RoomState = {
@@ -770,10 +776,10 @@ export class GameService {
 
   private generateRoomCode() {
     for (;;) {
-      let code = "";
-      for (let index = 0; index < 6; index += 1) {
-        code += ROOM_ALPHABET[Math.floor(this.random() * ROOM_ALPHABET.length)];
-      }
+      const code = Array.from(
+        randomBytes(ROOM_CODE_LENGTH),
+        (byte) => ROOM_CODE_ALPHABET[byte % ROOM_CODE_ALPHABET.length]!,
+      ).join("");
       if (!this.rooms.has(code)) return code;
     }
   }

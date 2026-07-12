@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RoomSnapshot } from "@wtcit/shared";
-import { GameService, type EventSink } from "./gameService";
+import { GameService, MAX_ACTIVE_ROOMS, type EventSink } from "./gameService";
 
 function createHarness() {
   vi.useFakeTimers();
@@ -85,7 +85,29 @@ describe("GameService", () => {
     expect(picker.phase).toBe("pickerPrep");
     expect("candidates" in picker).toBe(true);
     expect("candidates" in watcher).toBe(false);
-    expect(sessions.created.roomCode).toHaveLength(6);
+    expect(sessions.created.roomCode).toHaveLength(8);
+    expect(sessions.created.roomCode).toMatch(/^[A-HJ-NP-Z2-9]{8}$/u);
+  });
+
+  it("caps the total number of active rooms", () => {
+    const harness = createHarness();
+    for (let index = 0; index < MAX_ACTIVE_ROOMS; index += 1) {
+      expect(harness.service.createRoom(`socket-${index}`, {
+        nickname: `방장${index}`,
+        role: "player",
+      }).ok).toBe(true);
+    }
+
+    expect(harness.service.createRoom("socket-over-limit", {
+      nickname: "초과",
+      role: "player",
+    })).toMatchObject({ ok: false, code: "RATE_LIMITED" });
+
+    expect(harness.service.leaveRoom("socket-0").ok).toBe(true);
+    expect(harness.service.createRoom("socket-replacement", {
+      nickname: "교체",
+      role: "player",
+    }).ok).toBe(true);
   });
 
   it("never sends target or other guesses to a guesser", () => {

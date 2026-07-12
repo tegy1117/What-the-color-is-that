@@ -2,6 +2,8 @@ export const TIME_OPTIONS = [30, 45, 60, 90] as const;
 export const CYCLE_OPTIONS = [1, 2, 3] as const;
 export const MAX_PLAYERS = 10;
 export const MAX_SPECTATORS = 20;
+export const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const ROOM_CODE_LENGTH = 8;
 export const DEFAULT_COLOR = "#808080";
 
 export type TimeOption = (typeof TIME_OPTIONS)[number];

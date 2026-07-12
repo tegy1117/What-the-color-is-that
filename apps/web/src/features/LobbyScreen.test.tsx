@@ -6,7 +6,7 @@ import i18n from "../i18n";
 import { LobbyScreen } from "./LobbyScreen";
 
 const snapshot: LobbySnapshot = {
-  roomCode: "ABC234",
+  roomCode: "ABC23456",
   selfId: "host-id",
   hostId: "host-id",
   phase: "lobby",

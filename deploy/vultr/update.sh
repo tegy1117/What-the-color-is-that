@@ -40,10 +40,10 @@ source "${CONFIG_FILE}"
 
 check_public_endpoint() {
   if [[ "${DOMAIN}" == ":80" ]]; then
-    curl -fsS --retry 5 --retry-connrefused --retry-delay 2 \
+    curl -fsS --retry 15 --retry-all-errors --retry-delay 2 \
       --connect-timeout 5 --max-time 20 http://127.0.0.1/health >/dev/null
   else
-    curl -fsS --retry 5 --retry-connrefused --retry-delay 2 \
+    curl -fsS --retry 15 --retry-all-errors --retry-delay 2 \
       --connect-timeout 5 --max-time 20 "https://${DOMAIN}/health" >/dev/null
   fi
 }

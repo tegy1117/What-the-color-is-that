@@ -1,12 +1,23 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ParticipantRole } from "@wtcit/shared";
+import {
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
+  type ParticipantRole,
+} from "@wtcit/shared";
 import { BrandHeader } from "../components/BrandHeader";
 import styles from "../styles.module.css";
 
 interface EntryScreenProps {
   onCreate: (nickname: string, role: ParticipantRole) => Promise<unknown>;
   onJoin: (roomCode: string, nickname: string, role: ParticipantRole) => Promise<unknown>;
+}
+
+function normalizeRoomCode(value: string) {
+  return Array.from(value.toUpperCase())
+    .filter((character) => ROOM_CODE_ALPHABET.includes(character))
+    .slice(0, ROOM_CODE_LENGTH)
+    .join("");
 }
 
 function RolePicker({ value, onChange }: { value: ParticipantRole; onChange: (role: ParticipantRole) => void }) {
@@ -29,7 +40,7 @@ export function EntryScreen({ onCreate, onJoin }: EntryScreenProps) {
   const [joinName, setJoinName] = useState("");
   const [joinRole, setJoinRole] = useState<ParticipantRole>("player");
   const initialCode = new URLSearchParams(window.location.search).get("room") ?? "";
-  const [roomCode, setRoomCode] = useState(initialCode.toUpperCase());
+  const [roomCode, setRoomCode] = useState(normalizeRoomCode(initialCode));
 
   return (
     <div className={styles.appShell}>
@@ -45,7 +56,7 @@ export function EntryScreen({ onCreate, onJoin }: EntryScreenProps) {
           </form>
           <form className={styles.entryPanel} onSubmit={(event) => { event.preventDefault(); void onJoin(roomCode, joinName, joinRole); }}>
             <h2>{t("entry.joinTitle")}</h2>
-            <label>{t("entry.roomCode")}<input className={styles.codeInput} value={roomCode} onChange={(event) => setRoomCode(event.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 6))} maxLength={6} placeholder={t("entry.roomCodePlaceholder")} autoCapitalize="characters" required /></label>
+            <label>{t("entry.roomCode")}<input className={styles.codeInput} value={roomCode} onChange={(event) => setRoomCode(normalizeRoomCode(event.target.value))} minLength={ROOM_CODE_LENGTH} maxLength={ROOM_CODE_LENGTH} placeholder={t("entry.roomCodePlaceholder")} autoCapitalize="characters" autoCorrect="off" spellCheck={false} required /></label>
             <label>{t("entry.nickname")}<input value={joinName} onChange={(event) => setJoinName(event.target.value)} maxLength={12} placeholder={t("entry.nicknamePlaceholder")} autoComplete="nickname" required /></label>
             <label>{t("entry.role")}<RolePicker value={joinRole} onChange={setJoinRole} /></label>
             <button className={styles.darkButton} type="submit">{t("entry.join")}</button>
