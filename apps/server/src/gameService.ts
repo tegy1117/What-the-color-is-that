@@ -107,7 +107,10 @@ export class GameService {
     const parsed = joinRoomSchema.safeParse(rawPayload);
     if (!parsed.success) return failure("INVALID_PAYLOAD", "Invalid join request");
     const room = this.rooms.get(parsed.data.roomCode);
-    if (!room) return failure("ROOM_NOT_FOUND", "Room not found");
+    if (!room || room.participants.size === 0) {
+      if (room) this.destroyRoom(room);
+      return failure("ROOM_NOT_FOUND", "Room not found");
+    }
     if ([...room.participants.values()].some(
       (participant) => participant.nickname.toLocaleLowerCase() === parsed.data.nickname.toLocaleLowerCase(),
     )) {
@@ -134,6 +137,7 @@ export class GameService {
     participant.preferredRole = parsed.data.role;
     participant.pendingPlayer = joinsInProgress && parsed.data.role === "player";
     room.participants.set(participant.id, participant);
+    if (!room.participants.has(room.hostId)) this.transferHost(room);
     this.bindSocket(socketId, room.code, participant.id);
     this.clearCleanup(room.code);
     this.broadcast(room);
@@ -167,6 +171,7 @@ export class GameService {
     participant.socketId = socketId;
     participant.connected = true;
     participant.disconnectedAt = null;
+    if (!room.participants.has(room.hostId)) this.transferHost(room);
     if (
       room.game.phase !== "lobby" &&
       participant.preferredRole === "player" &&
@@ -630,6 +635,10 @@ export class GameService {
     } else {
       this.broadcast(room);
     }
+    if (room.participants.size === 0) {
+      this.destroyRoom(room);
+      return;
+    }
     if (explicit) this.scheduleCleanupIfEmpty(room);
   }
 
@@ -682,6 +691,12 @@ export class GameService {
     const timer = this.disconnectTimers.get(participantId);
     if (timer) this.clock.clearTimeout(timer);
     this.disconnectTimers.delete(participantId);
+  }
+
+  private destroyRoom(room: RoomState) {
+    this.clearPhaseTimer(room.code);
+    this.clearCleanup(room.code);
+    this.rooms.delete(room.code);
   }
 
   private scheduleCleanupIfEmpty(room: RoomState) {

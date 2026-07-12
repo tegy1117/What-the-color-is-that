@@ -187,6 +187,70 @@ describe("GameService", () => {
       .toBe(true);
   });
 
+  it("assigns a host when a participant reconnects after the previous host expires", () => {
+    const harness = createHarness();
+    const sessions = createTwoPlayerRoom(harness);
+    harness.service.disconnect("socket-a");
+    vi.advanceTimersByTime(1_000);
+    harness.setNow(2_000);
+    harness.service.disconnect("socket-b");
+    harness.setNow(31_000);
+    vi.advanceTimersByTime(29_000);
+
+    expect(harness.service.resumeSession("socket-c", sessions.joined).ok).toBe(true);
+    expect(harness.snapshots.get("socket-c")?.hostId).toBe(sessions.joined.participantId);
+  });
+
+  it("assigns a host when someone joins after the previous host expires", () => {
+    const harness = createHarness();
+    const sessions = createTwoPlayerRoom(harness);
+    harness.service.disconnect("socket-a");
+    vi.advanceTimersByTime(1_000);
+    harness.setNow(2_000);
+    harness.service.disconnect("socket-b");
+    harness.setNow(31_000);
+    vi.advanceTimersByTime(29_000);
+
+    const joined = harness.service.joinRoom("socket-c", {
+      roomCode: sessions.created.roomCode,
+      nickname: "수아",
+      role: "player",
+    });
+    expect(joined.ok).toBe(true);
+    if (joined.ok) {
+      expect(harness.snapshots.get("socket-c")?.hostId).toBe(joined.data.participantId);
+    }
+  });
+
+  it("deletes a room when its final reconnect grace period expires", () => {
+    const harness = createHarness();
+    const created = harness.service.createRoom("socket-a", { nickname: "민지", role: "player" });
+    if (!created.ok) throw new Error(created.message);
+    harness.service.disconnect("socket-a");
+    vi.advanceTimersByTime(30_000);
+
+    expect(harness.service.joinRoom("socket-b", {
+      roomCode: created.data.roomCode,
+      nickname: "준호",
+      role: "player",
+    })).toMatchObject({ ok: false, code: "ROOM_NOT_FOUND" });
+  });
+
+  it("deletes an active game room when every reconnect grace period expires", () => {
+    const harness = createHarness();
+    const sessions = createTwoPlayerRoom(harness);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+    harness.service.disconnect("socket-a");
+    harness.service.disconnect("socket-b");
+    vi.advanceTimersByTime(30_000);
+
+    expect(harness.service.joinRoom("socket-c", {
+      roomCode: sessions.created.roomCode,
+      nickname: "수아",
+      role: "player",
+    })).toMatchObject({ ok: false, code: "ROOM_NOT_FOUND" });
+  });
+
   it("rejects session resume at the reconnect deadline before the timer runs", () => {
     const harness = createHarness();
     const sessions = createThreePlayerRoom(harness);
