@@ -6,12 +6,13 @@ import { BrandHeader, PRODUCT_TITLE } from "./BrandHeader";
 
 describe("BrandHeader", () => {
   it("keeps the English product title in every locale and has no player avatar", async () => {
-    await i18n.changeLanguage("ko");
-    const { container, rerender } = render(<I18nextProvider i18n={i18n}><BrandHeader /></I18nextProvider>);
+    const instance = i18n.cloneInstance();
+    await instance.changeLanguage("ko");
+    const { container, rerender } = render(<I18nextProvider i18n={instance}><BrandHeader /></I18nextProvider>);
     expect(screen.getByText(PRODUCT_TITLE)).toBeInTheDocument();
     expect(container.querySelector("img")).not.toBeInTheDocument();
-    await i18n.changeLanguage("en");
-    rerender(<I18nextProvider i18n={i18n}><BrandHeader /></I18nextProvider>);
+    await instance.changeLanguage("en");
+    rerender(<I18nextProvider i18n={instance}><BrandHeader /></I18nextProvider>);
     expect(screen.getByText(PRODUCT_TITLE)).toBeInTheDocument();
   });
 });

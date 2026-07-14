@@ -3,7 +3,13 @@ import type {
   GameSettings,
   GuessResult,
   ParticipantRole,
+  PrecisionAttemptResult,
   RevealData,
+  SpyColorResult,
+  SpyElimination,
+  SpyHintEntry,
+  SpyRoundResult,
+  SpyVoteChoice,
 } from "@wtcit/shared";
 
 export interface Participant {
@@ -22,6 +28,37 @@ export interface Participant {
   confirmed: boolean;
   confirmedAt: number | null;
   lastGuessUpdateAt: number;
+}
+
+export interface SpyGameState {
+  roundPlayerIds: string[];
+  spyId: string | null;
+  targetHex: string | null;
+  alivePlayerIds: string[];
+  eliminatedPlayerIds: string[];
+  hintOrder: string[];
+  hintIndex: number;
+  hintCycle: number;
+  hints: SpyHintEntry[];
+  votes: Map<string, SpyVoteChoice>;
+  wrongEliminations: number;
+  probes: SpyColorResult[];
+  guessKind: "probe" | "final" | null;
+  caught: boolean;
+  reachedOneOnOne: boolean;
+  voteInvalid: boolean;
+  lastEliminated: SpyElimination | null;
+  roundResult: SpyRoundResult | null;
+}
+
+export interface PrecisionGameState {
+  roundPlayerIds: string[];
+  targetNumber: number;
+  targetHex: string | null;
+  attemptNumber: number;
+  histories: Map<string, PrecisionAttemptResult[]>;
+  currentResults: PrecisionAttemptResult[];
+  targetComplete: boolean;
 }
 
 export interface GameState {
@@ -44,6 +81,8 @@ export interface GameState {
   revealRemainingMs: number | null;
   skippedPickerNickname: string;
   results: GuessResult[];
+  spy: SpyGameState | null;
+  precision: PrecisionGameState | null;
 }
 
 export interface RoomState {
@@ -65,4 +104,3 @@ export const systemClock: Clock = {
   setTimeout: (callback, delay) => setTimeout(callback, delay),
   clearTimeout: (timer) => clearTimeout(timer),
 };
-

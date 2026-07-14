@@ -9,6 +9,7 @@ const snapshot: RevealSnapshot = {
   roomCode: "ABC23456",
   selfId: "player-a",
   hostId: "player-a",
+  mode: "classic",
   phase: "reveal",
   view: "reveal",
   settings: DEFAULT_SETTINGS,

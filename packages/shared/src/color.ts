@@ -105,6 +105,25 @@ export function calculateAccuracy(deltaE: number): number {
   return Math.round(100 * Math.exp(-((perceptualDistance / 40) ** 2)));
 }
 
+export function compareColors(color: string, targetHex: string) {
+  const deltaE = deltaEOK(color, targetHex);
+  return {
+    deltaE: Math.round(deltaE * 10) / 10,
+    accuracy: calculateAccuracy(deltaE),
+  };
+}
+
+export function calculateSpyCrewScore(
+  initialPlayerCount: number,
+  wrongEliminations: number,
+  caught: boolean,
+): number {
+  if (!caught) return 0;
+  const scoringSteps = Math.max(1, Math.floor(initialPlayerCount) - 2);
+  const remainingSteps = Math.max(0, scoringSteps - Math.max(0, Math.floor(wrongEliminations)));
+  return Math.round((remainingSteps / scoringSteps) * 100);
+}
+
 export function calculateRawTime(
   submittedAt: number | null,
   startedAt: number,

@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
+import { useTranslation } from "react-i18next";
 import type { HsvColor } from "../lib/color";
 import styles from "../styles.module.css";
 
@@ -12,6 +13,7 @@ interface ColorPickerProps {
 const clamp = (value: number, minimum = 0, maximum = 100) => Math.min(maximum, Math.max(minimum, value));
 
 export function ColorPicker({ value, onChange, disabled = false }: ColorPickerProps) {
+  const { t } = useTranslation();
   const squareRef = useRef<HTMLDivElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
 
@@ -71,8 +73,8 @@ export function ColorPicker({ value, onChange, disabled = false }: ColorPickerPr
         onKeyDown={handleSquareKey}
         role="slider"
         tabIndex={disabled ? -1 : 0}
-        aria-label="채도와 밝기"
-        aria-valuetext={`채도 ${Math.round(value.s)}, 밝기 ${Math.round(value.v)}`}
+        aria-label={t("common.colorSquare")}
+        aria-valuetext={t("common.colorValues", { saturation: Math.round(value.s), brightness: Math.round(value.v) })}
         aria-disabled={disabled}
       >
         <span className={styles.colorThumb} style={{ left: `${value.s}%`, top: `${100 - value.v}%` }} />
@@ -85,7 +87,7 @@ export function ColorPicker({ value, onChange, disabled = false }: ColorPickerPr
         onKeyDown={handleHueKey}
         role="slider"
         tabIndex={disabled ? -1 : 0}
-        aria-label="색조"
+        aria-label={t("common.hue")}
         aria-valuemin={0}
         aria-valuemax={360}
         aria-valuenow={Math.round(value.h)}

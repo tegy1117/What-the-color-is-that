@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ClockIcon } from "./Icons";
 import styles from "../styles.module.css";
 
@@ -11,6 +12,7 @@ interface CountdownProps {
 }
 
 export function Countdown({ deadline, serverNow, totalSeconds, paused = false, remainingMs = null }: CountdownProps) {
+  const { t } = useTranslation();
   const clockOffset = serverNow - Date.now();
   const remaining = () => paused
     ? remainingMs ?? 0
@@ -29,7 +31,7 @@ export function Countdown({ deadline, serverNow, totalSeconds, paused = false, r
   const progress = Math.max(0, Math.min(100, (milliseconds / (totalSeconds * 1000)) * 100));
 
   return (
-    <div className={styles.countdown} aria-label={`남은 시간 ${display}`}>
+    <div className={styles.countdown} aria-label={t("common.remainingTime", { value: display })}>
       <ClockIcon />
       <strong>{display}</strong>
       <span style={{ width: `${progress}%` }} />

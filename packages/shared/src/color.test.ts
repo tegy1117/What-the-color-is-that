@@ -4,6 +4,8 @@ import {
   calculateGuessScore,
   calculatePickerScore,
   calculateRawTime,
+  calculateSpyCrewScore,
+  compareColors,
   deltaEOK,
   generateCandidateColors,
   scoreGuess,
@@ -62,6 +64,17 @@ describe("color scoring", () => {
   it("caps the picker score at 150", () => {
     expect(calculatePickerScore([100, 100])).toBe(150);
     expect(calculatePickerScore([60, 80])).toBe(105);
+  });
+
+  it("scores spy detection by actual wrong eliminations", () => {
+    expect(calculateSpyCrewScore(4, 0, true)).toBe(100);
+    expect(calculateSpyCrewScore(4, 1, true)).toBe(50);
+    expect(calculateSpyCrewScore(6, 2, true)).toBe(50);
+    expect(calculateSpyCrewScore(6, 4, false)).toBe(0);
+  });
+
+  it("returns rounded distance and similarity for mode-specific guesses", () => {
+    expect(compareColors("#336699", "#336699")).toEqual({ deltaE: 0, accuracy: 100 });
   });
 
   it("generates four distinct playable candidates", () => {

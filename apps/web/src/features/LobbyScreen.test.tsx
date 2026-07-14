@@ -9,6 +9,7 @@ const snapshot: LobbySnapshot = {
   roomCode: "ABC23456",
   selfId: "host-id",
   hostId: "host-id",
+  mode: "classic",
   phase: "lobby",
   view: "lobby",
   settings: DEFAULT_SETTINGS,
@@ -48,19 +49,20 @@ function renderLobby(
   value: LobbySnapshot,
   onRoleChange = vi.fn(),
   onKickPlayer = vi.fn(),
+  onSettings = vi.fn(),
 ) {
   const view = render(
     <I18nextProvider i18n={i18n}>
       <LobbyScreen
         snapshot={value}
-        onSettings={vi.fn()}
+        onSettings={onSettings}
         onStart={vi.fn()}
         onRoleChange={onRoleChange}
         onKickPlayer={onKickPlayer}
       />
     </I18nextProvider>,
   );
-  return { ...view, onRoleChange, onKickPlayer };
+  return { ...view, onRoleChange, onKickPlayer, onSettings };
 }
 
 describe("LobbyScreen", () => {
@@ -107,6 +109,27 @@ describe("LobbyScreen", () => {
     fireEvent.click(spectatorButton);
 
     expect(onRoleChange).toHaveBeenCalledWith("spectator");
+  });
+
+  it("lets the host select a mode while preserving every other setting", () => {
+    const onSettings = vi.fn();
+    renderLobby(snapshot, vi.fn(), vi.fn(), onSettings);
+
+    const spyButton = screen.getByRole("button", { name: "스파이" });
+    expect(spyButton).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(spyButton);
+    expect(onSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mode: "spy" });
+  });
+
+  it("uses the spy mode minimum of four connected players", () => {
+    renderLobby({
+      ...snapshot,
+      mode: "spy",
+      settings: { ...DEFAULT_SETTINGS, mode: "spy" },
+    });
+
+    expect(screen.getByRole("button", { name: "게임 시작" })).toBeDisabled();
+    expect(screen.getByText("플레이어가 최소 4명 필요해요.")).toBeInTheDocument();
   });
 
   it("shows player kick controls only to the host", () => {

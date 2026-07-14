@@ -106,6 +106,8 @@ export function createGameServer(limits = SOCKET_LIMITS) {
     socket.on("picker:submit", (payload, ack) => reply(ack, () => service.submitPicker(socket.id, payload)));
     socket.on("guess:update", (payload, ack) => reply(ack, () => service.updateGuess(socket.id, payload)));
     socket.on("guess:confirm", (payload, ack) => reply(ack, () => service.confirmGuess(socket.id, payload)));
+    socket.on("spy:submitHint", (payload, ack) => reply(ack, () => service.submitSpyHint(socket.id, payload)));
+    socket.on("spy:vote", (payload, ack) => reply(ack, () => service.submitSpyVote(socket.id, payload)));
     socket.on("reveal:advance", (ack) => reply(ack, () => service.advanceReveal(socket.id)));
     socket.on("reveal:pause", (payload, ack) => reply(ack, () => service.pauseReveal(socket.id, payload)));
     socket.on("session:resume", (payload, ack) => reply(

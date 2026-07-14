@@ -6,6 +6,7 @@ import type {
   ParticipantRole,
   RoomSnapshot,
   SessionInfo,
+  SpyVoteChoice,
 } from "@wtcit/shared";
 import { socket } from "../lib/socket";
 
@@ -67,13 +68,12 @@ export function useGameSocket() {
     };
     const onPresence = (presence: { participantId: string; color: string; confirmed: boolean }) => {
       setSnapshot((current) => {
-        if (
-          !current ||
-          current.phase !== "guessing" ||
-          (current.view !== "picker" && current.view !== "watcher")
-        ) {
-          return current;
-        }
+        if (!current) return current;
+        const canWatchClassic = current.phase === "guessing" &&
+          (current.view === "picker" || current.view === "watcher");
+        const canWatchPrecision = current.phase === "precisionGuessing" &&
+          current.view === "precisionSpectator";
+        if (!canWatchClassic && !canWatchPrecision) return current;
         return {
           ...current,
           liveGuesses: current.liveGuesses.map((guess) =>
@@ -145,6 +145,10 @@ export function useGameSocket() {
     socket.emit("guess:update", { color }, handleResult), [handleResult]);
   const confirmGuess = useCallback((color: string) =>
     socket.emit("guess:confirm", { color }, handleResult), [handleResult]);
+  const submitSpyHint = useCallback((hint: string) =>
+    socket.emit("spy:submitHint", { hint }, handleResult), [handleResult]);
+  const submitSpyVote = useCallback((choice: SpyVoteChoice) =>
+    socket.emit("spy:vote", { choice }, handleResult), [handleResult]);
   const advanceReveal = useCallback(() => socket.emit("reveal:advance", handleResult), [handleResult]);
   const pauseReveal = useCallback((paused: boolean) =>
     socket.emit("reveal:pause", { paused }, handleResult), [handleResult]);
@@ -165,6 +169,8 @@ export function useGameSocket() {
     submitPicker,
     updateGuess,
     confirmGuess,
+    submitSpyHint,
+    submitSpyVote,
     advanceReveal,
     pauseReveal,
   };

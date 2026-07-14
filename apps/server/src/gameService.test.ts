@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { RoomSnapshot } from "@wtcit/shared";
+import { DEFAULT_SETTINGS, type RoomSnapshot, type SpySnapshot } from "@wtcit/shared";
 import { GameService, MAX_ACTIVE_ROOMS, type EventSink } from "./gameService";
 
 function createHarness() {
@@ -51,6 +51,43 @@ function createThreePlayerRoom(harness: ReturnType<typeof createHarness>) {
   });
   if (!third.ok) throw new Error(third.message);
   return { ...sessions, third: third.data };
+}
+
+function createFourPlayerRoom(harness: ReturnType<typeof createHarness>) {
+  const sessions = createThreePlayerRoom(harness);
+  const fourth = harness.service.joinRoom("socket-d", {
+    roomCode: sessions.created.roomCode,
+    nickname: "도윤",
+    role: "player",
+  });
+  if (!fourth.ok) throw new Error(fourth.message);
+  return { ...sessions, fourth: fourth.data };
+}
+
+function advanceSnapshotDeadline(
+  harness: ReturnType<typeof createHarness>,
+  socketId: string,
+) {
+  const snapshot = harness.snapshots.get(socketId);
+  if (!snapshot?.deadline) throw new Error("deadline missing");
+  const delay = snapshot.deadline - snapshot.serverNow;
+  harness.setNow(snapshot.deadline);
+  vi.advanceTimersByTime(delay);
+}
+
+function submitAllSpyHints(
+  harness: ReturnType<typeof createHarness>,
+  socketByParticipantId: Map<string, string>,
+) {
+  for (;;) {
+    const snapshot = harness.snapshots.get("socket-a");
+    if (snapshot?.phase !== "spyHinting") return;
+    const currentId = snapshot.currentHintPlayerId;
+    const socketId = currentId ? socketByParticipantId.get(currentId) : null;
+    if (!socketId) throw new Error("current hint player missing");
+    const result = harness.service.submitSpyHint(socketId, { hint: `힌트-${snapshot.hints.length + 1}` });
+    if (!result.ok) throw new Error(result.message);
+  }
 }
 
 function startGuessing(harness: ReturnType<typeof createHarness>) {
@@ -454,6 +491,287 @@ describe("GameService", () => {
     expect(harness.service.kickPlayer("socket-a", {
       participantId: spectator.data.participantId,
     })).toMatchObject({ ok: false, code: "NOT_ALLOWED" });
+  });
+
+  it("keeps every setting when the host returns to the lobby", () => {
+    const harness = createHarness();
+    createTwoPlayerRoom(harness);
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      mode: "precision" as const,
+      precisionTargetAccuracy: 88,
+      precisionMaxAttempts: 7,
+      precisionAttemptSeconds: 45,
+      precisionTargets: 3 as const,
+    };
+    expect(harness.service.updateSettings("socket-a", settings).ok).toBe(true);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+    expect(harness.service.endGame("socket-a").ok).toBe(true);
+
+    const lobby = harness.snapshots.get("socket-a")!;
+    expect(lobby.phase).toBe("lobby");
+    expect(lobby.settings).toEqual(settings);
+  });
+
+  it("isolates spy secrets, exposes anonymous mutable tallies, and scores a later catch", () => {
+    const harness = createHarness();
+    const sessions = createFourPlayerRoom(harness);
+    const spectator = harness.service.joinRoom("socket-e", {
+      roomCode: sessions.created.roomCode,
+      nickname: "관전자",
+      role: "spectator",
+    });
+    if (!spectator.ok) throw new Error(spectator.message);
+    expect(harness.service.updateSettings("socket-a", {
+      ...DEFAULT_SETTINGS,
+      mode: "spy",
+      spyRounds: 1,
+      spyHintSeconds: 5,
+      spyDiscussionSeconds: 5,
+      spyVoteSeconds: 5,
+      spyGuessSeconds: 5,
+    }).ok).toBe(true);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+
+    const sockets = ["socket-a", "socket-b", "socket-c", "socket-d"];
+    const playerSnapshots = sockets.map((socketId) => harness.snapshots.get(socketId) as SpySnapshot);
+    const spySocket = sockets.find((socketId) =>
+      (harness.snapshots.get(socketId) as SpySnapshot).spyRole === "spy"
+    )!;
+    const crewSockets = sockets.filter((socketId) => socketId !== spySocket);
+    const spySnapshot = harness.snapshots.get(spySocket) as SpySnapshot;
+    const crewSnapshot = harness.snapshots.get(crewSockets[0]!) as SpySnapshot;
+    const spectatorSnapshot = harness.snapshots.get("socket-e") as SpySnapshot;
+    expect(spySnapshot.targetHex).toBeNull();
+    expect(spySnapshot.spyId).toBe(spySnapshot.selfId);
+    expect(crewSnapshot.targetHex).toMatch(/^#[0-9A-F]{6}$/u);
+    expect(crewSnapshot.spyId).toBeNull();
+    expect(spectatorSnapshot.targetHex).toBe(crewSnapshot.targetHex);
+    expect(spectatorSnapshot.spyId).toBe(spySnapshot.selfId);
+    expect(playerSnapshots.filter((snapshot) => snapshot.spyRole === "spy")).toHaveLength(1);
+
+    const socketByParticipantId = new Map(
+      sockets.map((socketId) => [harness.snapshots.get(socketId)!.selfId, socketId]),
+    );
+    submitAllSpyHints(harness, socketByParticipantId);
+    expect(harness.snapshots.get("socket-a")?.phase).toBe("spyDiscussion");
+    advanceSnapshotDeadline(harness, "socket-a");
+    expect(harness.snapshots.get("socket-a")?.phase).toBe("spyVoting");
+
+    const firstCrewSocket = crewSockets[0]!;
+    const eliminatedId = harness.snapshots.get(firstCrewSocket)!.selfId;
+    expect(harness.service.submitSpyVote(firstCrewSocket, { choice: "abstain" }).ok).toBe(true);
+    expect(harness.service.submitSpyVote(firstCrewSocket, { choice: eliminatedId }).ok).toBe(true);
+    const otherCrewSocket = crewSockets[1]!;
+    const otherView = harness.snapshots.get(otherCrewSocket) as SpySnapshot;
+    expect(otherView.ownVote).toBeNull();
+    expect(otherView.voteTallies.find((entry) => entry.choice === eliminatedId)?.count).toBe(1);
+    for (const socketId of sockets.filter((value) => value !== firstCrewSocket)) {
+      expect(harness.service.submitSpyVote(socketId, { choice: eliminatedId }).ok).toBe(true);
+    }
+    advanceSnapshotDeadline(harness, "socket-a");
+
+    const eliminatedView = harness.snapshots.get(firstCrewSocket) as SpySnapshot;
+    expect(eliminatedView.phase).toBe("spyGuessing");
+    expect(eliminatedView.guessKind).toBe("probe");
+    expect(eliminatedView.spyId).toBeNull();
+    expect(eliminatedView.eliminatedPlayerIds).toContain(eliminatedId);
+    expect(harness.service.confirmGuess(spySocket, { color: spectatorSnapshot.targetHex }).ok).toBe(true);
+    expect((harness.snapshots.get(spySocket) as SpySnapshot).probes).toHaveLength(1);
+    expect((harness.snapshots.get(firstCrewSocket) as SpySnapshot).probes).toHaveLength(0);
+
+    submitAllSpyHints(harness, socketByParticipantId);
+    advanceSnapshotDeadline(harness, "socket-a");
+    const spyId = (harness.snapshots.get(spySocket) as SpySnapshot).selfId;
+    for (const socketId of sockets.filter((value) => value !== firstCrewSocket)) {
+      expect(harness.service.submitSpyVote(socketId, { choice: spyId }).ok).toBe(true);
+    }
+    advanceSnapshotDeadline(harness, "socket-a");
+    const finalSelection = harness.snapshots.get(spySocket) as SpySnapshot;
+    expect(finalSelection.phase).toBe("spyGuessing");
+    expect(finalSelection.guessKind).toBe("final");
+    expect(harness.service.updateGuess(spySocket, { color: "#FFFFFF" }).ok).toBe(true);
+    const departingCrewSocket = crewSockets.find((socketId) => socketId !== firstCrewSocket)!;
+    expect(harness.service.leaveRoom(departingCrewSocket).ok).toBe(true);
+    expect((harness.snapshots.get(spySocket) as SpySnapshot).spyCurrentColor).toBe("#FFFFFF");
+    expect(harness.service.confirmGuess(spySocket, { color: spectatorSnapshot.targetHex }).ok).toBe(true);
+
+    const reveal = harness.snapshots.get("socket-a") as SpySnapshot;
+    expect(reveal.phase).toBe("spyRoundReveal");
+    expect(reveal.roundResult).toMatchObject({ caught: true, crewScore: 50, spyScore: 100 });
+    const scores = new Map(reveal.ranking.map((entry) => [entry.participantId, entry.score]));
+    expect(scores.get(spyId)).toBe(100);
+    for (const socketId of crewSockets) {
+      const participantId = harness.snapshots.get(socketId)!.selfId;
+      const participantView = harness.service.getSnapshot(sessions.created.roomCode, participantId)!;
+      const summary = [...participantView.players, ...participantView.spectators]
+        .find((entry) => entry.id === participantId);
+      expect(summary?.score).toBe(50);
+    }
+  });
+
+  it("keeps precision targets private, retains own history, and scores only the final attempt", () => {
+    const harness = createHarness();
+    const sessions = createTwoPlayerRoom(harness);
+    const spectator = harness.service.joinRoom("socket-c", {
+      roomCode: sessions.created.roomCode,
+      nickname: "관전자",
+      role: "spectator",
+    });
+    if (!spectator.ok) throw new Error(spectator.message);
+    expect(harness.service.updateSettings("socket-a", {
+      ...DEFAULT_SETTINGS,
+      mode: "precision",
+      precisionTargetAccuracy: 100,
+      precisionMaxAttempts: 2,
+      precisionAttemptSeconds: 5,
+      precisionTargets: 1,
+    }).ok).toBe(true);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+
+    const player = harness.snapshots.get("socket-a")!;
+    const watcher = harness.snapshots.get("socket-c")!;
+    expect(player.phase).toBe("precisionGuessing");
+    expect(watcher.phase).toBe("precisionGuessing");
+    if (player.phase !== "precisionGuessing" || watcher.phase !== "precisionGuessing") return;
+    expect(player.targetHex).toBeNull();
+    expect(watcher.targetHex).toMatch(/^#[0-9A-F]{6}$/u);
+    const target = watcher.targetHex!;
+
+    expect(harness.service.confirmGuess("socket-a", { color: "#000000" }).ok).toBe(true);
+    expect(harness.service.confirmGuess("socket-b", { color: "#FFFFFF" }).ok).toBe(true);
+    const firstResult = harness.snapshots.get("socket-a")!;
+    expect(firstResult.phase).toBe("precisionResult");
+    if (firstResult.phase !== "precisionResult") return;
+    expect(firstResult.targetComplete).toBe(false);
+    expect(firstResult.targetHex).toBeNull();
+    expect(firstResult.ownHistory).toHaveLength(1);
+    expect((harness.snapshots.get("socket-c") as typeof firstResult).attemptResults).toHaveLength(2);
+
+    advanceSnapshotDeadline(harness, "socket-a");
+    const secondAttempt = harness.snapshots.get("socket-a")!;
+    expect(secondAttempt.phase).toBe("precisionGuessing");
+    if (secondAttempt.phase !== "precisionGuessing") return;
+    expect(secondAttempt.attemptNumber).toBe(2);
+    expect(secondAttempt.ownHistory).toHaveLength(1);
+    expect(harness.service.confirmGuess("socket-a", { color: target }).ok).toBe(true);
+    expect(harness.service.confirmGuess("socket-b", { color: "#000000" }).ok).toBe(true);
+
+    const finalResult = harness.snapshots.get("socket-a")!;
+    expect(finalResult.phase).toBe("precisionResult");
+    if (finalResult.phase !== "precisionResult") return;
+    expect(finalResult.targetComplete).toBe(true);
+    expect(finalResult.targetHex).toBe(target);
+    expect(finalResult.ownHistory).toHaveLength(2);
+    expect(finalResult.attemptResults[0]?.accuracy).toBe(100);
+    expect(finalResult.ranking.find((entry) => entry.participantId === finalResult.selfId)?.score).toBe(100);
+  });
+
+  it("treats missing spy votes as abstentions and invalidates the vote", () => {
+    const harness = createHarness();
+    createFourPlayerRoom(harness);
+    expect(harness.service.updateSettings("socket-a", {
+      ...DEFAULT_SETTINGS,
+      mode: "spy",
+      spyRounds: 1,
+      spyHintSeconds: 5,
+      spyDiscussionSeconds: 5,
+      spyVoteSeconds: 5,
+      spyGuessSeconds: 5,
+    }).ok).toBe(true);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+    const sockets = ["socket-a", "socket-b", "socket-c", "socket-d"];
+    const socketByParticipantId = new Map(
+      sockets.map((socketId) => [harness.snapshots.get(socketId)!.selfId, socketId]),
+    );
+    submitAllSpyHints(harness, socketByParticipantId);
+    advanceSnapshotDeadline(harness, "socket-a");
+    const candidateId = (harness.snapshots.get("socket-b") as SpySnapshot).selfId;
+    expect(harness.service.submitSpyVote("socket-a", { choice: candidateId }).ok).toBe(true);
+    advanceSnapshotDeadline(harness, "socket-a");
+
+    const nextCycle = harness.snapshots.get("socket-a") as SpySnapshot;
+    expect(nextCycle.phase).toBe("spyHinting");
+    expect(nextCycle.voteInvalid).toBe(true);
+    expect(nextCycle.eliminatedPlayerIds).toHaveLength(0);
+    expect(nextCycle.probes).toHaveLength(0);
+  });
+
+  it("keeps the latest precision color authoritative when watcher updates are throttled", () => {
+    const harness = createHarness();
+    createTwoPlayerRoom(harness);
+    expect(harness.service.updateSettings("socket-a", {
+      ...DEFAULT_SETTINGS,
+      mode: "precision",
+      precisionTargets: 1,
+      precisionMaxAttempts: 1,
+      precisionAttemptSeconds: 5,
+    }).ok).toBe(true);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+    expect(harness.service.updateGuess("socket-a", { color: "#000000" }).ok).toBe(true);
+    expect(harness.service.updateGuess("socket-a", { color: "#FFFFFF" }))
+      .toMatchObject({ ok: false, code: "RATE_LIMITED" });
+    expect(harness.service.confirmGuess("socket-b", { color: "#000000" }).ok).toBe(true);
+    advanceSnapshotDeadline(harness, "socket-a");
+
+    const result = harness.snapshots.get("socket-a")!;
+    expect(result.phase).toBe("precisionResult");
+    if (result.phase === "precisionResult") {
+      expect(result.attemptResults[0]?.color).toBe("#FFFFFF");
+    }
+  });
+
+  it("returns precision to the lobby when reconnect expiry leaves one player", () => {
+    const harness = createHarness();
+    createTwoPlayerRoom(harness);
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      mode: "precision" as const,
+      precisionTargets: 1 as const,
+      precisionAttemptSeconds: 5,
+    };
+    expect(harness.service.updateSettings("socket-a", settings).ok).toBe(true);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+    harness.service.disconnect("socket-b");
+    vi.advanceTimersByTime(30_000);
+
+    const lobby = harness.snapshots.get("socket-a")!;
+    expect(lobby.phase).toBe("lobby");
+    expect(lobby.notice).toBe("notEnoughPlayers");
+    expect(lobby.settings).toEqual(settings);
+  });
+
+  it("retries a canceled spy round without consuming its round number", () => {
+    const harness = createHarness();
+    const sessions = createFourPlayerRoom(harness);
+    const fifth = harness.service.joinRoom("socket-e", {
+      roomCode: sessions.created.roomCode,
+      nickname: "하린",
+      role: "player",
+    });
+    if (!fifth.ok) throw new Error(fifth.message);
+    expect(harness.service.updateSettings("socket-a", {
+      ...DEFAULT_SETTINGS,
+      mode: "spy",
+      spyRounds: 1,
+      spyHintSeconds: 5,
+      spyDiscussionSeconds: 5,
+      spyVoteSeconds: 5,
+      spyGuessSeconds: 5,
+    }).ok).toBe(true);
+    expect(harness.service.startGame("socket-a").ok).toBe(true);
+    const sockets = ["socket-a", "socket-b", "socket-c", "socket-d", "socket-e"];
+    const spySocket = sockets.find((socketId) =>
+      (harness.snapshots.get(socketId) as SpySnapshot).spyRole === "spy"
+    )!;
+    expect(harness.service.leaveRoom(spySocket).ok).toBe(true);
+
+    const remainingSocket = sockets.find((socketId) => socketId !== spySocket)!;
+    const retried = harness.snapshots.get(remainingSocket) as SpySnapshot;
+    expect(retried.phase).toBe("spyHinting");
+    expect(retried.roundNumber).toBe(1);
+    expect(retried.totalRounds).toBe(1);
+    expect(retried.roundPlayerIds).toHaveLength(4);
   });
 
   it("uses shared ranks for tied totals", () => {
